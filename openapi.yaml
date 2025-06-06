@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Restaurant Deals API
+  description: >
+    A simple Spring Boot WebFlux API for discovering active restaurant deals and the peak deal window.
+  version: "1.0.0"
+  contact:
+    name: Your Name
+    url: https://github.com/yourusername/restaurant-deals
+    email: your.email@example.com
+
+servers:
+  - url: http://localhost:8080
+    description: Local server
+
+tags:
+  - name: Deals
+    description: Endpoints related to restaurant deals
+
+paths:
+  /api/deals:
+    get:
+      tags:
+        - Deals
+      summary: Get all active deals at a specified time
+      description: Returns all currently active restaurant deals for the provided time of day.
+      parameters:
+        - in: query
+          name: timeOfDay
+          schema:
+            type: string
+            example: 5:00pm
+          required: true
+          description: The time to check for active deals format:`3:00pm`, `7:30pm`
+      responses:
+        '200':
+          description: Active deals found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActiveDealResponse'
+        '400':
+          description: Invalid time format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Downstream restaurant service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/deals/peak-time:
+    get:
+      tags:
+        - Deals
+      summary: Get the peak deal time window
+      description: Returns the overlapping time window when the most deals are available.
+      responses:
+        '200':
+          description: Peak deal time window found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeakTimeResponse'
+        '204':
+          description: No overlapping peak window found
+        '503':
+          description: Downstream restaurant service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ActiveDealResponse:
+      type: object
+      properties:
+        restaurantObjectId:
+          type: string
+          example: abc123
+        restaurantName:
+          type: string
+          example: Sushi House
+        restaurantAddress1:
+          type: string
+          example: 123 Queen St
+        restaurantSuburb:
+          type: string
+          example: Melbourne
+        restaurantOpen:
+          type: string
+          example: 10:00am
+        restaurantClose:
+          type: string
+          example: 10:00pm
+        dealObjectId:
+          type: string
+          example: xyz789
+        discount:
+          type: string
+          example: "20%"
+        dineIn:
+          type: boolean
+          example: true
+        lightning:
+          type: boolean
+          example: false
+        qtyLeft:
+          type: integer
+          example: 4
+
+    PeakTimeResponse:
+      type: object
+      properties:
+        peakTimeStart:
+          type: string
+          example: 5:00pm
+        peakTimeEnd:
+          type: string
+          example: 7:00pm
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid time format. Expected format: 3:00pm, 6:00pm, etc."
+
