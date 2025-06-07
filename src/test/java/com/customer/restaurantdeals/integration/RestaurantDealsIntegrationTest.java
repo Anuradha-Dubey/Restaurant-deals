@@ -41,7 +41,7 @@ class RestaurantDealsIntegrationTest {
 
     @Test
     void getActiveDeals_ShouldReturnDealsList() {
-        // Arrange: WireMock stub for /misc/challengedata.json
+        //WireMock stub for /misc/challengedata.json
         wireMockServer.stubFor(get(urlEqualTo("/misc/challengedata.json"))
                 .willReturn(aResponse()
                         .withStatus(200)

@@ -2,7 +2,6 @@ package com.customer.restaurantdeals.controller;
 
 import com.customer.restaurantdeals.dto.ActiveDealResponse;
 import com.customer.restaurantdeals.dto.PeakTimeResponse;
-import com.customer.restaurantdeals.exception.InvalidTimeFormatException;
 import com.customer.restaurantdeals.service.RestaurantDealsService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -13,8 +12,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 import java.util.List;
-
-import static org.mockito.ArgumentMatchers.anyString;
+import java.util.Map;
+import static com.customer.restaurantdeals.util.RestaurantDealsConstant.MSG_TIME_REQUIRED;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(RestaurantDealsController.class)
@@ -33,15 +32,14 @@ class RestaurantDealsControllerTest {
             return Mockito.mock(RestaurantDealsService.class);
         }
     }
+
     @Test
     void getActiveDeals_HappyPath() {
-        List<ActiveDealResponse> deals = List.of(new ActiveDealResponse());
-        when(restaurantDealsService.getActiveDealsAtTime(anyString())).thenReturn(Mono.just(deals));
+        List<ActiveDealResponse> deals = List.of(validDeal());
+        when(restaurantDealsService.getActiveDealsAtTime("5:00pm")).thenReturn(Mono.just(deals));
 
-        webTestClient.get().uri(uriBuilder -> uriBuilder
-                        .path("/api/deals")
-                        .queryParam("timeOfDay", "5:00pm")
-                        .build())
+        webTestClient.get()
+                .uri(uri -> uri.path("/api/deals").queryParam("timeOfDay", "5:00pm").build())
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -49,43 +47,44 @@ class RestaurantDealsControllerTest {
     }
 
     @Test
-    void getActiveDeals_Failure_InvalidTime() {
-        when(restaurantDealsService.getActiveDealsAtTime(anyString()))
-                .thenThrow(new InvalidTimeFormatException("Invalid time format"));
-
-        webTestClient.get().uri(uriBuilder -> uriBuilder
-                        .path("/api/deals")
-                        .queryParam("timeOfDay", "badTime")
-                        .build())
+    void getActiveDeals_Failure_MissingTimeParam() {
+        webTestClient.get().uri(uri -> uri.path("/api/deals").build())
                 .exchange()
-                .expectStatus().isBadRequest();
+                .expectStatus().isBadRequest()
+                .expectBody(Map.class)
+                .consumeWith(response -> {
+                    Map<String, String> errors = response.getResponseBody();
+                    assert errors.containsKey("timeOfDay");
+                    assert errors.get("timeOfDay").equals(MSG_TIME_REQUIRED);
+                });
     }
 
-/*    @Test
-    void getActiveDeals_Failure_ServiceUnavailable() {
-        // Make sure the time string is valid so parsing passes!
-        when(restaurantDealsService.getActiveDealsAtTime(anyString()))
-                .thenThrow(new RestaurantServiceUnavailableException("Service unavailable"));
-
-        webTestClient.get().uri(uriBuilder -> uriBuilder
-                        .path("/api/deals")
-                        .queryParam("timeOfDay", "5:00pm") // valid!
-                        .build())
+    @Test
+    void getActiveDeals_Failure_InvalidFormat() {
+        webTestClient.get()
+                .uri(uri -> uri.path("/api/deals").queryParam("timeOfDay", "13:00pm").build())
                 .exchange()
-                .expectStatus().isEqualTo(503);
-    }*/
+                .expectStatus().isBadRequest()
+                .expectBody(Map.class)
+                .consumeWith(response -> {
+                    Map<String, String> errors = response.getResponseBody();
+                    assert errors.containsKey("timeOfDay");
+                    assert errors.get("timeOfDay")
+                            .equals("Invalid time format. Expected format: 3:00pm, 6:00pm, etc.");
+                });
+    }
 
     @Test
     void getPeakTimeWindow_HappyPath() {
-        PeakTimeResponse response = new PeakTimeResponse("5:00pm", "7:00pm");
+        PeakTimeResponse response = new PeakTimeResponse("5:00PM", "7:00PM");
         when(restaurantDealsService.findPeakDealTimeWindow()).thenReturn(Mono.just(response));
 
         webTestClient.get().uri("/api/deals/peak-time")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.peakTimeStart").isEqualTo("5:00pm")
-                .jsonPath("$.peakTimeEnd").isEqualTo("7:00pm");
+                .jsonPath("$.peakTimeStart").isEqualTo("5:00PM")
+                .jsonPath("$.peakTimeEnd").isEqualTo("7:00PM");
     }
 
     @Test
@@ -97,4 +96,19 @@ class RestaurantDealsControllerTest {
                 .expectStatus().isNoContent();
     }
 
+    private ActiveDealResponse validDeal() {
+        ActiveDealResponse d = new ActiveDealResponse();
+        d.setRestaurantObjectId("r1");
+        d.setRestaurantName("Test");
+        d.setRestaurantAddress1("Addr");
+        d.setRestaurantSuburb("Sub");
+        d.setRestaurantOpen("8:00AM");
+        d.setRestaurantClose("10:00PM");
+        d.setDealObjectId("d1");
+        d.setDiscount("10%");
+        d.setQtyLeft(5);
+        return d;
+    }
+
 }
+

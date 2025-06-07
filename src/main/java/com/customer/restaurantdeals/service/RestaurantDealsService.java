@@ -7,6 +7,7 @@ import com.customer.restaurantdeals.exception.RestaurantServiceUnavailableExcept
 import com.customer.restaurantdeals.mapper.ActiveDealResponseMapper;
 import com.customer.restaurantdeals.model.Deal;
 import com.customer.restaurantdeals.model.RestaurantResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
@@ -16,10 +17,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
-
 import static com.customer.restaurantdeals.util.RestaurantDealsConstant.*;
 
 @Service
+@Slf4j
 public class RestaurantDealsService {
 
     private final WebClient webClient;
@@ -32,12 +33,15 @@ public class RestaurantDealsService {
 
     public Mono<List<ActiveDealResponse>> getActiveDealsAtTime(String timeOfDay) {
 
+        log.info("Querying active deals at {}", timeOfDay);
+
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(TIME_FORMAT, Locale.ENGLISH);
         LocalTime queryTime;
 
         try {
             queryTime = LocalTime.parse(timeOfDay.toUpperCase(), formatter);
         } catch (DateTimeParseException e) {
+            log.warn("Invalid time format provided: {}", timeOfDay);
             throw new InvalidTimeFormatException(MSG_INVALID_TIME);
         }
 
@@ -46,21 +50,31 @@ public class RestaurantDealsService {
                 .retrieve()
                 .onStatus(
                         status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class)
-                                .flatMap(body -> Mono.error(new RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)))
+                        response -> {
+                            log.error("Upstream returned error status {}", response.statusCode());
+                            return response.bodyToMono(String.class)
+                                    .flatMap(body -> Mono.error(new RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)));
+                        }
                 )
                 .bodyToMono(RestaurantResponse.class)
                 .onErrorMap(
-                        ex -> ex instanceof RuntimeException,
-                        ex -> new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE)
+                        ex -> {
+                            log.error("Error fetching restaurant data", ex);
+                            return ex instanceof RuntimeException;
+                        },
+                        ex -> {
+                            log.error("Error fetching restaurant data", ex);
+                            return new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE);
+                        }
                 )
 
                 .flatMapMany(response -> Flux.fromIterable(response.getRestaurants())) // unwrap list
-                .filter(r -> isOpenAt(queryTime, r.getRestaurantOpen(), r.getRestaurantClose()))           // filter restaurants open at queryTime
+                .filter(r -> isOpenAt(queryTime, r.getRestaurantOpen(), r.getRestaurantClose())) // filter restaurants open at queryTime
                 .flatMap(r -> Flux.fromIterable(r.getDeals())
                         .filter(deal -> isDealOpenAt(deal, queryTime))
                         .map(deal -> activeDealResponseMapper.toResponse(r, deal)))
-                .collectList();
+                .collectList()
+                .doOnSuccess(list -> log.info("Returning {} active deals", list.size()));
     }
 
     private boolean isOpenAt(LocalTime queryTime, LocalTime open, LocalTime close) {
@@ -82,24 +96,43 @@ public class RestaurantDealsService {
     }
 
     public Mono<PeakTimeResponse> findPeakDealTimeWindow() {
+        log.info("Computing peak deal time window");
         return webClient.get()
                 .uri(RESTAURANTS_DATA_URI)
                 .retrieve()
                 .onStatus(
                         status -> status.is4xxClientError() || status.is5xxServerError(),
-                        response -> response.bodyToMono(String.class)
-                                .flatMap(body -> Mono.error(new RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)))
+                        response -> {
+                            log.error("Upstream returned error status {}", response.statusCode());
+                            return response.bodyToMono(String.class)
+                                    .flatMap(body -> Mono.error(new
+                                            RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)));
+                        }
                 )
                 .bodyToMono(RestaurantResponse.class)
                 .onErrorMap(
-                        ex -> ex instanceof RuntimeException,
-                        ex -> new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE)
+                        ex -> {
+                            log.error("Error fetching restaurant data for peak window", ex);
+                            return ex instanceof RuntimeException;
+                        },
+                        ex -> {
+                            log.error("Error fetching restaurant data for peak window", ex);
+                            return new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE);
+                        }
                 )
                 .flatMapMany(response -> Flux.fromIterable(response.getRestaurants()))
                 .flatMap(restaurant -> Flux.fromIterable(restaurant.getDeals()))
                 .collectList()
                 .map(this::computePeakWindow)
-                .flatMap(resp -> resp == null ? Mono.empty() : Mono.just(resp));
+                .flatMap(resp -> resp == null ? Mono.empty() : Mono.just(resp))
+                .doOnSuccess(resp -> {
+                if (resp != null) {
+                    log.info("Peak window found: {} - {}", resp.getPeakTimeStart(), resp.getPeakTimeEnd());
+                } else {
+                    log.info("No overlapping peak window found");
+                }
+                });
+
     }
 
     private PeakTimeResponse computePeakWindow(List<Deal> deals) {
