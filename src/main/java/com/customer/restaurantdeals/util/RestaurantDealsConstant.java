@@ -12,7 +12,6 @@ public class RestaurantDealsConstant {
     public static final String MSG_PARSING_ERROR = "Failed to parse time: ";
 
     // API URIs
-    public static final String BASE_URI_RESTAURANTS = "https://eccdn.com.au";
     public static final String RESTAURANTS_DATA_URI = "/misc/challengedata.json";
 
     // Date/Time formats

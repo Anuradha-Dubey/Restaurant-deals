@@ -1,0 +1,32 @@
+{
+  "restaurants": [
+    {
+      "objectId": "r1",
+      "name": "Overlap Café",
+      "address1": "123 Main St",
+      "suburb": "Testville",
+      "open": "8:00AM",
+      "close": "8:00PM",
+      "deals": [
+        {
+          "objectId": "d1",
+          "discount": "10% off Morning",
+          "dineIn": true,
+          "lightning": false,
+          "open": "9:00AM",
+          "close": "2:00PM",
+          "qtyLeft": 5
+        },
+        {
+          "objectId": "d2",
+          "discount": "20% off Lunch",
+          "dineIn": true,
+          "lightning": false,
+          "open": "11:00AM",
+          "close": "3:00PM",
+          "qtyLeft": 10
+        }
+      ]
+    }
+  ]
+}

@@ -9,10 +9,8 @@ import com.customer.restaurantdeals.model.Deal;
 import com.customer.restaurantdeals.model.RestaurantResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -49,13 +47,13 @@ public class RestaurantDealsService {
                 .onStatus(
                         status -> status.is4xxClientError() || status.is5xxServerError(),
                         response -> response.bodyToMono(String.class)
-                                .map(body -> new RestaurantServiceUnavailableException
-                                        (MSG_RESTAURANT_SERVICE_ERROR))
+                                .flatMap(body -> Mono.error(new RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)))
                 )
                 .bodyToMono(RestaurantResponse.class)
-                .onErrorMap(WebClientResponseException.class,
-                        ex -> new RestaurantServiceUnavailableException
-                                (MSG_SERVICE_UNAVAILABLE))
+                .onErrorMap(
+                        ex -> ex instanceof RuntimeException,
+                        ex -> new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE)
+                )
 
                 .flatMapMany(response -> Flux.fromIterable(response.getRestaurants())) // unwrap list
                 .filter(r -> isOpenAt(queryTime, r.getRestaurantOpen(), r.getRestaurantClose()))           // filter restaurants open at queryTime
@@ -90,21 +88,24 @@ public class RestaurantDealsService {
                 .onStatus(
                         status -> status.is4xxClientError() || status.is5xxServerError(),
                         response -> response.bodyToMono(String.class)
-                                .map(body -> new RestaurantServiceUnavailableException
-                                        (MSG_RESTAURANT_SERVICE_ERROR))
+                                .flatMap(body -> Mono.error(new RestaurantServiceUnavailableException(MSG_RESTAURANT_SERVICE_ERROR)))
                 )
                 .bodyToMono(RestaurantResponse.class)
-                .onErrorMap(WebClientResponseException.class,
-                        ex -> new RestaurantServiceUnavailableException
-                                (MSG_SERVICE_UNAVAILABLE))
-
+                .onErrorMap(
+                        ex -> ex instanceof RuntimeException,
+                        ex -> new RestaurantServiceUnavailableException(MSG_SERVICE_UNAVAILABLE)
+                )
                 .flatMapMany(response -> Flux.fromIterable(response.getRestaurants()))
                 .flatMap(restaurant -> Flux.fromIterable(restaurant.getDeals()))
                 .collectList()
-                .map(this::computePeakWindow);
+                .map(this::computePeakWindow)
+                .flatMap(resp -> resp == null ? Mono.empty() : Mono.just(resp));
     }
 
     private PeakTimeResponse computePeakWindow(List<Deal> deals) {
+        if (deals == null || deals.isEmpty()) {
+            return null;
+        }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(TIME_FORMAT, Locale.ENGLISH);
 
         // Start with max time range
